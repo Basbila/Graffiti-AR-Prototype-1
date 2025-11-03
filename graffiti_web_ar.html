@@ -88,6 +88,7 @@
                 imageEl.onload = () => {
                     sceneEl.querySelector('a-assets').appendChild(imageEl);
                     isImageLoaded = true;
+                    // This is the message we see: camera should be running now!
                     updateInstructions("✅ Image loaded. Tap anywhere to begin!"); 
                 };
                 
@@ -103,6 +104,7 @@
 
                 // MindAR starts camera and tracking
                 sceneEl.addEventListener('mindar-initialize', () => {
+                    // This confirms the camera component has loaded
                     updateInstructions("Camera Initialized. Move your phone slowly to find a wall.");
                 });
 
@@ -182,7 +184,7 @@
     <!-- The MindAR AR Scene -->
     <a-scene 
         mindar-image-aframe="imageTargetSrc: none; autostart: true; renderTarget: mindar-camera" 
-        embedded 
+        background="transparent" 
         color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights: true"
         vr-mode-ui="enabled: false"

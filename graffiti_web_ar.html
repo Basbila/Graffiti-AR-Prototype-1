@@ -68,7 +68,8 @@
                 imageEl.onload = () => {
                     sceneEl.querySelector('a-assets').appendChild(imageEl);
                     isImageLoaded = true;
-                    updateInstructions("✅ Image loaded. Tap anywhere to place graffiti!");
+                    // Initial confirmation message
+                    updateInstructions("✅ Image loaded. Move your phone to find a wall!"); 
                 };
                 
                 imageEl.onerror = () => {
@@ -81,7 +82,7 @@
 
                 // MindAR starts camera and tracking
                 sceneEl.addEventListener('mindar-initialize', () => {
-                    updateInstructions("Camera Initialized. Searching for surfaces...");
+                    updateInstructions("Camera Initialized. Move your phone slowly to find a wall.");
                 });
 
                 // MindAR failed to start camera
@@ -122,8 +123,33 @@
                         
                         updateInstructions("🎨 Graffiti Placed! Tap again to add more.");
                     } else {
-                         updateInstructions("👀 Move your phone to find a surface (Reticle not visible).");
+                         updateInstructions("👀 Move your phone to find a surface (Green Reticle not visible).");
                     }
+                });
+            }
+        });
+        
+        // --- Reticle Visibility Component ---
+        // MindAR makes the camera feed visible, but we need to check if the reticle is detecting a plane
+        AFRAME.registerComponent('reticle-visibility', {
+            init: function() {
+                const reticle = document.getElementById('reticle');
+                const updateInstructions = (message) => {
+                    const instructionsEl = document.getElementById('instructions');
+                    if (instructionsEl) {
+                        instructionsEl.innerHTML = message;
+                    }
+                };
+                
+                // Listen for the world-tracking anchor being found/lost
+                this.el.addEventListener('anchorFound', () => {
+                    reticle.setAttribute('visible', true);
+                    updateInstructions("✅ **Surface Found!** Tap the Green Circle to place graffiti.");
+                });
+
+                this.el.addEventListener('anchorLost', () => {
+                    reticle.setAttribute('visible', false);
+                    updateInstructions("👀 Move your phone to find a wall.");
                 });
             }
         });
@@ -158,7 +184,8 @@
             material="color: #00FF00; shader: flat; opacity: 0.5" 
             rotation="-90 0 0" 
             visible="false"
-            ></a-entity>
+            reticle-visibility>
+        </a-entity>
 
         <!-- A-Assets is where the image will be loaded once -->
         <a-assets></a-assets>

@@ -47,8 +47,8 @@
         // --- Component to Load Image and Place Graffiti on Tap ---
         AFRAME.registerComponent('graffiti-placement', {
             schema: {
-                // IMPORTANT: The imageSrc is now a full URL to fix the GitHub Pages loading error.
-                imageSrc: { type: 'string', default: 'https://basbila.github.io/Graffiti-AR-Prototype-1/my_graffiti.png' },
+                // CHANGED: Using a reliable external placeholder URL to bypass GitHub path issues for now.
+                imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
                 imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
             },
             
@@ -63,6 +63,12 @@
                 const updateInstructions = (message) => {
                     instructionsEl.innerHTML = message;
                 };
+                
+                // Ensure the camera is ready and tell the user to press the AR button
+                sceneEl.addEventListener('loaded', () => {
+                    updateInstructions("Waiting for AR button press... The camera will start after you tap **'Enter AR'**.");
+                });
+
 
                 // 1. Load Image and Setup Diagnostics
                 const imageEl = document.createElement('img');

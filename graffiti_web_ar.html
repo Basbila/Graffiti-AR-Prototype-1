@@ -18,11 +18,12 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.9);
-            display: flex;
+            /* CRITICAL FIX: Make the overlay instantly visible on load */
+            display: flex; 
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 101; /* Must be above the instructions */
+            z-index: 101; 
             color: white;
             padding: 20px;
             box-sizing: border-box;
@@ -38,7 +39,7 @@
             max-width: 90%;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             font-weight: 600;
-            position: absolute; /* Place instructions within the AR scene */
+            position: absolute; 
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
@@ -71,25 +72,26 @@
             }
         };
 
-        // --- Dedicated Script for AR Button Click (The Fix) ---
+        // --- Dedicated Script for AR Button Click ---
         document.addEventListener('DOMContentLoaded', () => {
             const arButton = document.getElementById('ar-button');
             const sceneEl = document.querySelector('a-scene');
             const overlay = document.getElementById('overlay');
             
-            // Set initial message
-            updateInstructions("Loading AR capabilities...");
+            // Set initial message (Will be hidden by overlay, but good practice)
+            updateInstructions("Tap **Enter AR** to begin."); 
             
-            // CRITICAL FIX: Attach listener directly and once
+            // Attach listener directly and once
+            // This is the most reliable way to handle the click event
             arButton.addEventListener('click', () => {
-                // Hide the overlay and button
+                // Hide the overlay and button immediately
                 overlay.style.display = 'none';
                 
-                // Trigger AR mode (this is the one line that needs to execute successfully)
+                // Trigger AR mode (This is the camera activation)
                 sceneEl.enterAR();
             });
             
-            // Listen for successful AR entry
+            // Listen for successful AR entry (The camera has started)
             sceneEl.addEventListener('enter-ar', () => {
                 // Hide the overlay once AR is active
                 overlay.style.display = 'none';
@@ -119,7 +121,6 @@
                 
                 imageEl.onerror = () => {
                     console.error("Image load failed. Using fallback.");
-                    updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
                     isImageLoaded = false;
                 };
 
@@ -130,26 +131,25 @@
                 
                 // 2. Setup Reticle for Surface Tracking (Hit-Testing)
                 sceneEl.addEventListener('ar-hit-test-start', () => {
-                    // This fires when the AR system is ready to receive hit test requests
                     reticle = document.createElement('a-entity');
                     reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
                     reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); 
                     reticle.setAttribute('rotation', '-90 0 0'); 
-                    reticle.object3D.visible = false; // Hide until a surface is found
+                    reticle.object3D.visible = false; 
                     sceneEl.appendChild(reticle);
                     
                     updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
                 });
                 
                 sceneEl.addEventListener('ar-hit-test-update', (event) => {
-                    if (reticle && event.detail.intersection) {
+                    if (reticle && sceneEl.is('ar-mode') && event.detail.intersection) {
                         reticle.setAttribute('position', event.detail.intersection.position);
                         reticle.object3D.matrix.fromArray(event.detail.intersection.matrix);
                         reticle.object3D.matrix.decompose(reticle.object3D.position, reticle.object3D.rotation, reticle.object3D.scale);
                         reticle.object3D.visible = true;
                         
                         updateInstructions("✅ **Tap the Green Circle** to place your graffiti here.");
-                    } else if (reticle) {
+                    } else if (reticle && sceneEl.is('ar-mode')) {
                         reticle.object3D.visible = false;
                         updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
                     }
@@ -157,7 +157,7 @@
                 
                 // 3. Placement Logic on Tap (Click)
                 sceneEl.addEventListener('click', () => {
-                    if (reticle && reticle.object3D.visible) {
+                    if (reticle && reticle.object3D.visible && sceneEl.is('ar-mode')) {
                         
                         // Create the Graffiti Plane
                         const graffiti = document.createElement('a-plane');
@@ -168,22 +168,17 @@
                         // Use texture or fallback color
                         if (isImageLoaded) {
                             graffiti.setAttribute('src', '#graffitiTexture');
-                            
-                            // Align the graffiti to the wall's orientation using the reticle's matrix
-                            graffiti.object3D.matrix.copy(reticle.object3D.matrix);
-                            graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
-                            
-                            // Adjust Y position to center the graffiti on the detected point
-                            graffiti.object3D.position.y += data.imageSize / 2;
-
                         } else {
-                            // Fallback logic for when the image fails to load
                             graffiti.setAttribute('color', 'red'); 
-                            graffiti.object3D.matrix.copy(reticle.object3D.matrix);
-                            graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
-                            graffiti.object3D.position.y += data.imageSize / 2;
                         }
                         
+                        // Align the graffiti to the wall's orientation using the reticle's matrix
+                        graffiti.object3D.matrix.copy(reticle.object3D.matrix);
+                        graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
+                        
+                        // Adjust Y position to center the graffiti on the detected point
+                        graffiti.object3D.position.y += data.imageSize / 2;
+
                         sceneEl.appendChild(graffiti);
                         
                         updateInstructions("🎨 **Graffiti Placed!** Move around it or tap again to place another.");

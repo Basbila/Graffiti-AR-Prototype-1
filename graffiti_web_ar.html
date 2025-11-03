@@ -11,11 +11,23 @@
     <style>
         /* Styles for full screen and instructions */
         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
-        #instructions {
+        #overlay {
             position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 101; /* Must be above the instructions */
+            color: white;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #instructions {
             background-color: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 12px 20px;
@@ -26,22 +38,22 @@
             max-width: 90%;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             font-weight: 600;
+            position: absolute; /* Place instructions within the AR scene */
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
         }
         /* New custom button style */
         #ar-button {
             background-color: #4CAF50; 
             color: white;
-            padding: 10px 20px;
+            padding: 15px 30px;
             border-radius: 12px;
             border: none;
-            font-size: 16px;
+            font-size: 20px;
             cursor: pointer;
-            margin-top: 10px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-            /* Important: Ensure the button is block level for centering */
-            display: block; 
-            margin-left: auto;
-            margin-right: auto;
+            transition: background-color 0.3s;
         }
         #ar-button:hover {
             background-color: #45a049;
@@ -51,10 +63,44 @@
     </style>
     
     <script>
+        // --- Helper Function for Instructions ---
+        const updateInstructions = (message) => {
+            const instructionsEl = document.getElementById('instructions');
+            if (instructionsEl) {
+                instructionsEl.innerHTML = message;
+            }
+        };
+
+        // --- Dedicated Script for AR Button Click (The Fix) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const arButton = document.getElementById('ar-button');
+            const sceneEl = document.querySelector('a-scene');
+            const overlay = document.getElementById('overlay');
+            
+            // Set initial message
+            updateInstructions("Loading AR capabilities...");
+            
+            // CRITICAL FIX: Attach listener directly and once
+            arButton.addEventListener('click', () => {
+                // Hide the overlay and button
+                overlay.style.display = 'none';
+                
+                // Trigger AR mode (this is the one line that needs to execute successfully)
+                sceneEl.enterAR();
+            });
+            
+            // Listen for successful AR entry
+            sceneEl.addEventListener('enter-ar', () => {
+                // Hide the overlay once AR is active
+                overlay.style.display = 'none';
+                updateInstructions("Camera Active. Searching for surfaces...");
+            });
+        });
+
         // --- Component to Load Image and Place Graffiti on Tap ---
         AFRAME.registerComponent('graffiti-placement', {
             schema: {
-                // Using a reliable external placeholder URL to bypass GitHub path issues for now.
+                // Using a reliable external placeholder URL
                 imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
                 imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
             },
@@ -62,42 +108,9 @@
             init: function () {
                 const sceneEl = this.el.sceneEl;
                 const data = this.data;
-                const instructionsEl = document.getElementById('instructions');
                 let reticle = null;
                 let isImageLoaded = false;
                 
-                // Helper to update the top message and handle the AR button display/click
-                const updateInstructions = (message) => {
-                    if (sceneEl.is('ar-mode')) {
-                        // AR is active, only show the message
-                        instructionsEl.innerHTML = message;
-                        return;
-                    }
-                    
-                    // AR is not active, show the message AND the button
-                    instructionsEl.innerHTML = message + "<button id='ar-button'>Enter AR (Start Camera)</button>";
-                    
-                    // CRITICAL FIX: Attach listener AFTER the innerHTML is set
-                    const arButton = document.getElementById('ar-button');
-                    if (arButton) {
-                        arButton.addEventListener('click', () => {
-                            // This function call triggers the camera and AR tracking
-                            sceneEl.enterAR();
-                        });
-                    }
-                };
-
-                // MANUAL START BUTTON LOGIC
-                // We add the button and set up the click listener only when the scene is ready.
-                sceneEl.addEventListener('loaded', () => {
-                    updateInstructions("Ready! Tap **'Enter AR (Start Camera)'** below.");
-                });
-                
-                sceneEl.addEventListener('enter-ar', () => {
-                    updateInstructions("Camera Active. Searching for surfaces...");
-                });
-
-
                 // 1. Load Image and Setup Diagnostics
                 const imageEl = document.createElement('img');
                 imageEl.setAttribute('id', 'graffitiTexture');
@@ -106,10 +119,7 @@
                 
                 imageEl.onerror = () => {
                     console.error("Image load failed. Using fallback.");
-                    // We only update instructions if AR mode is NOT active to avoid overwriting tracking messages
-                    if (!sceneEl.is('ar-mode')) {
-                       updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
-                    }
+                    updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
                     isImageLoaded = false;
                 };
 
@@ -120,10 +130,12 @@
                 
                 // 2. Setup Reticle for Surface Tracking (Hit-Testing)
                 sceneEl.addEventListener('ar-hit-test-start', () => {
+                    // This fires when the AR system is ready to receive hit test requests
                     reticle = document.createElement('a-entity');
                     reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
                     reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); 
                     reticle.setAttribute('rotation', '-90 0 0'); 
+                    reticle.object3D.visible = false; // Hide until a surface is found
                     sceneEl.appendChild(reticle);
                     
                     updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
@@ -183,7 +195,14 @@
 </head>
 
 <body>
-    <!-- Instructions for the user -->
+    <!-- Overlay for the Button (Ensures click works before AR starts) -->
+    <div id="overlay">
+        <h1>Graffiti AR Prototype</h1>
+        <p style="font-size: 1.1em; margin-bottom: 30px;">Tap below to activate your camera and start world tracking.</p>
+        <button id="ar-button">Enter AR (Start Camera)</button>
+    </div>
+
+    <!-- Instructions that overlay the camera feed once AR is active -->
     <div id="instructions">
         Loading...
     </div>
@@ -192,7 +211,7 @@
     <a-scene 
         ar-modes="hit-test" 
         vr-mode-ui="enabled: false" 
-        webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #instructions;"
+        webxr="optionalFeatures: hit-test, dom-overlay"
         graffiti-placement> 
 
         <!-- A-Assets is where the image is loaded once -->

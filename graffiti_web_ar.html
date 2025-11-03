@@ -3,21 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>Web AR Graffiti Prototype</title>
+    <title>Markerless Graffiti Projector (WebXR)</title>
     
-    <!-- 1. Load A-Frame (handles the 3D scene) -->
+    <!-- 1. Load A-Frame (the 3D scene handler) -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    
-    <!-- 2. Load the AR.js library (handles camera access and tracking) -->
-    <!-- We use the hiro marker tracking for simplicity, but for surface detection (like a wall), 
-         we switch to the 'patt.kanji' marker or a custom marker for testing. -->
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 
     <style>
-        /* Make the AR view full screen and ensure proper font usage */
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
-        
-        /* Style for the instruction message */
+        /* Styles for full screen and instructions */
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
         #instructions {
             position: absolute;
             top: 20px;
@@ -28,65 +21,150 @@
             padding: 12px 20px;
             border-radius: 8px;
             text-align: center;
-            font-size: 16px;
-            z-index: 100; /* Ensure it stays on top of the AR content */
+            font-size: 18px;
+            z-index: 100;
             max-width: 90%;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            font-weight: 600;
+        }
+        /* Style the required AR button for a better look */
+        .a-enter-vr-button {
+            background-color: #4CAF50 !important; /* Green */
+            color: white !important;
+            padding: 10px 20px !important;
+            border-radius: 12px !important;
+            border: 2px solid white !important;
+            font-size: 16px !important;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.3s;
+        }
+        .a-enter-vr-button:hover {
+            background-color: #45a049 !important;
         }
     </style>
+    
+    <script>
+        // --- Component to Load Image and Place Graffiti on Tap ---
+        AFRAME.registerComponent('graffiti-placement', {
+            schema: {
+                imageSrc: { type: 'string', default: 'my_graffiti.png' },
+                imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
+            },
+            
+            init: function () {
+                const sceneEl = this.el.sceneEl;
+                const data = this.data;
+                const instructionsEl = document.getElementById('instructions');
+                let reticle = null;
+                let isImageLoaded = false;
+                
+                // Helper to update the top message
+                const updateInstructions = (message) => {
+                    instructionsEl.innerHTML = message;
+                };
+
+                // 1. Load Image and Setup Diagnostics
+                const imageEl = document.createElement('img');
+                imageEl.setAttribute('id', 'graffitiTexture');
+                imageEl.setAttribute('crossorigin', 'anonymous');
+                imageEl.src = data.imageSrc;
+                
+                imageEl.onerror = () => {
+                    updateInstructions(`⚠️ **ERROR:** Image file "${data.imageSrc}" not found on GitHub. Using fallback RED color.`);
+                    isImageLoaded = false;
+                };
+
+                imageEl.onload = () => {
+                    sceneEl.querySelector('a-assets').appendChild(imageEl);
+                    isImageLoaded = true;
+                };
+                
+                // 2. Setup Reticle for Surface Tracking (Hit-Testing)
+                sceneEl.addEventListener('ar-hit-test-start', () => {
+                    reticle = document.createElement('a-entity');
+                    reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
+                    reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); // Green circle
+                    reticle.setAttribute('rotation', '-90 0 0'); // Lay flat on the surface
+                    sceneEl.appendChild(reticle);
+                    
+                    updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
+                });
+                
+                sceneEl.addEventListener('ar-hit-test-update', (event) => {
+                    if (reticle && event.detail.intersection) {
+                        reticle.setAttribute('position', event.detail.intersection.position);
+                        reticle.object3D.visible = true;
+                        updateInstructions("✅ **Tap the Green Circle** to place your graffiti here.");
+                    } else if (reticle) {
+                        reticle.object3D.visible = false;
+                        updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
+                    }
+                });
+                
+                // 3. Placement Logic on Tap (Click)
+                sceneEl.addEventListener('click', (event) => {
+                    if (reticle && reticle.object3D.visible) {
+                        const position = reticle.getAttribute('position');
+                        
+                        // Create the Graffiti Plane
+                        const graffiti = document.createElement('a-plane');
+                        graffiti.setAttribute('id', `graffiti-${Date.now()}`);
+                        graffiti.setAttribute('height', data.imageSize);
+                        graffiti.setAttribute('width', data.imageSize);
+                        graffiti.setAttribute('rotation', '0 0 0'); // Start flat
+                        
+                        // Use texture or fallback color
+                        if (isImageLoaded) {
+                            graffiti.setAttribute('src', '#graffitiTexture');
+                            // Orient the plane to stand vertically on the wall 
+                            graffiti.setAttribute('rotation', '-90 0 0'); 
+                            graffiti.object3D.lookAt(0, position.y, 0); // Aim towards the camera
+                        } else {
+                            graffiti.setAttribute('color', 'red'); // Fallback color
+                        }
+                        
+                        // Set position on the detected surface (Y is up/down)
+                        // Adjust Y to lift it slightly off the floor if placed there, 
+                        // or center it on the wall hit point.
+                        graffiti.setAttribute('position', {
+                            x: position.x,
+                            y: position.y + (isImageLoaded ? data.imageSize / 2 : 0), // Lift plane up half its height
+                            z: position.z
+                        });
+                        
+                        sceneEl.appendChild(graffiti);
+                        
+                        updateInstructions("🎨 **Graffiti Placed!** Move around it or tap again to place another.");
+                    }
+                });
+                
+                updateInstructions("Tap the 'Enter AR' button below to start tracking.");
+            }
+        });
+    </script>
 </head>
 
 <body>
     <!-- Instructions for the user -->
     <div id="instructions">
-        Point your camera at a flat, visible AR marker (like the 'kanji' marker) to project the graffiti.
+        Loading...
     </div>
 
     <!-- The A-Frame AR Scene -->
-    <a-scene embedded
-             arjs='sourceType: webcam; 
-                   sourceUrl: ''; 
-                   detectionMode: mono_and_matrix; 
-                   matrixCodeType: 3x3; 
-                   debugUIEnabled: false;'>
+    <a-scene 
+        ar-modes="hit-test" 
+        vr-mode-ui="enabled: false" 
+        webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #instructions;"
+        graffiti-placement="imageSrc: my_graffiti.png; imageSize: 1.0"> 
 
-        <!-- Asset Management: Define the Graffiti Texture -->
-        <a-assets>
-            <!-- 
-            *** MODIFICATION HERE: Replace the placeholder URL with your actual image file name. ***
-            
-            1. Upload your image (e.g., 'my_graffiti.png') to the same GitHub folder as this HTML file.
-            2. Change the 'src' value below to match your image file name.
-            -->
-            <img id="graffitiTexture" src="my_graffiti.png" crossorigin="anonymous">
-        </a-assets>
+        <!-- A-Assets is where the image is loaded once -->
+        <a-assets></a-assets>
 
-        <!-- 
-        Marker Anchor: This is the core AR element.
-        - type: 'pattern' means it uses a specific printed marker.
-        - url: The default AR.js marker for the 'kanji' character. 
+        <!-- The Camera is required for WebXR -->
+        <a-entity camera position="0 0 0"></a-entity>
         
-        For testing, you must print the 'kanji' marker (search for "AR.js kanji marker image") and place it on your wall.
-        The graffiti will appear on top of this physical image.
-        -->
-        <a-marker preset="kanji">
-            <!-- 
-            The 3D object to be displayed (a simple plane).
-            - color: We don't need color since we use a texture.
-            - src: References the graffiti texture we defined in a-assets.
-            - height/width: Defines the real-world size (e.g., 1 meter wide).
-            - rotation: Rotates the plane to face the user when the marker is placed vertically.
-            -->
-            <a-plane src="#graffitiTexture" 
-                     height="1.0" width="1.0" 
-                     rotation="-90 0 0" 
-                     position="0 0 0.001" 
-                     shadow>
-            </a-plane>
-        </a-marker>
-
-        <!-- The Camera: Necessary for the AR scene -->
-        <a-entity camera></a-entity>
+        <!-- The Scene is where virtual objects will be placed -->
+        <!-- Objects will be dynamically added via the graffiti-placement component -->
     </a-scene>
 </body>
 </html>

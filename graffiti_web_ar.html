@@ -19,7 +19,7 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.8); /* Darker background for visibility */
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
@@ -27,44 +27,56 @@
             font-size: 18px;
             z-index: 100;
             max-width: 90%;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
             font-weight: 600;
         }
-        /* MindAR automatically creates a button, we will style the instructions around it */
-        .a-enter-ar-button {
-            display: none !important; 
+        /* Style for the error state */
+        .error-message {
+            background-color: #A30000; /* Red for error */
         }
     </style>
     
     <script>
         // --- Helper Function for Instructions ---
-        const updateInstructions = (message) => {
+        const updateInstructions = (message, isError = false) => {
             const instructionsEl = document.getElementById('instructions');
             if (instructionsEl) {
                 instructionsEl.innerHTML = message;
+                instructionsEl.classList.toggle('error-message', isError);
             }
         };
 
-        // --- Camera Startup Logic (CRITICAL FIX) ---
+        // --- Camera Startup Logic (CRITICAL POLLING FIX) ---
         document.addEventListener('DOMContentLoaded', () => {
             const sceneEl = document.querySelector('a-scene');
 
-            // Listen for the entire A-Frame scene and all components to be fully loaded
-            sceneEl.addEventListener('loaded', () => {
-                updateInstructions("Starting AR camera...");
+            // Function to aggressively check for the MindAR component every 50ms
+            const startMindAR = () => {
+                const mindarComponent = sceneEl.components['mindar-image-aframe'];
                 
-                // CRITICAL FIX: Add a small delay (200ms) to ensure the MindAR component is attached 
-                // and the scene is fully ready before calling the startup function.
-                setTimeout(() => {
-                    const mindarComponent = sceneEl.components['mindar-image-aframe'];
-                    
-                    if (mindarComponent && mindarComponent.start) {
-                        mindarComponent.start();
-                        updateInstructions("✅ Camera Access Granted. Move phone slowly to find a wall.");
-                    } else {
-                        updateInstructions("❌ ERROR: MindAR failed to attach its startup function. Check console for details.");
-                    }
-                }, 200); // Wait 200ms to allow all libraries to initialize
+                if (mindarComponent && mindarComponent.start) {
+                    // Success! Start the camera.
+                    updateInstructions("MindAR components ready. Starting camera...");
+                    mindarComponent.start();
+                    // After MindAR starts, the graffiti-placer component takes over the instructions
+                } else if (Date.now() - startTime < 5000) {
+                    // If it's not ready and less than 5 seconds have passed, check again soon
+                    setTimeout(startMindAR, 50);
+                } else {
+                    // Hard fail after 5 seconds
+                    updateInstructions(`❌ **FATAL ERROR:** AR component failed to initialize after 5s.`, true);
+                }
+            };
+
+            // Start the polling process
+            const startTime = Date.now();
+            updateInstructions("Initializing AR resources...");
+            startMindAR();
+
+            // Handle system errors when MindAR is running
+            sceneEl.addEventListener('mindar-error', (event) => {
+                console.error("MindAR runtime error:", event.detail.error);
+                updateInstructions(`❌ **CAMERA BLOCK:** The browser is restricting access. Check iOS Settings > Privacy > Camera.`, true);
             });
         });
 
@@ -84,7 +96,7 @@
                 
                 let isImageLoaded = false;
 
-                // Load image asset
+                // Load image asset (This loads independently)
                 const imageEl = document.createElement('img');
                 imageEl.setAttribute('id', 'graffitiTexture');
                 imageEl.setAttribute('crossorigin', 'anonymous');
@@ -100,14 +112,9 @@
                     isImageLoaded = false;
                 };
 
-
-                // --- Event Listeners ---
-                
-                // MindAR failed to start camera (usually due to permission blocks)
-                sceneEl.addEventListener('mindar-error', (event) => {
-                    console.error("MindAR failed to start:", event.detail.error);
-                    // Provide the specific iOS settings fix
-                    updateInstructions(`❌ ERROR: Failed to start AR. Check iOS Settings > Privacy > Camera.`);
+                // MindAR succeeded in starting the camera
+                sceneEl.addEventListener('mindar-started', () => {
+                    updateInstructions("✅ **Camera Active.** Move phone slowly to find a wall.");
                 });
 
 

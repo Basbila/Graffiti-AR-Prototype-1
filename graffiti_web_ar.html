@@ -47,7 +47,8 @@
         // --- Component to Load Image and Place Graffiti on Tap ---
         AFRAME.registerComponent('graffiti-placement', {
             schema: {
-                imageSrc: { type: 'string', default: 'my_graffiti.png' },
+                // IMPORTANT: The imageSrc is now a full URL to fix the GitHub Pages loading error.
+                imageSrc: { type: 'string', default: 'https://basbila.github.io/Graffiti-AR-Prototype-1/my_graffiti.png' },
                 imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
             },
             
@@ -70,7 +71,7 @@
                 imageEl.src = data.imageSrc;
                 
                 imageEl.onerror = () => {
-                    updateInstructions(`⚠️ **ERROR:** Image file "${data.imageSrc}" not found on GitHub. Using fallback RED color.`);
+                    updateInstructions(`⚠️ **ERROR:** Image file "${data.imageSrc}" FAILED to load. Using fallback RED color.`);
                     isImageLoaded = false;
                 };
 
@@ -82,8 +83,9 @@
                 // 2. Setup Reticle for Surface Tracking (Hit-Testing)
                 sceneEl.addEventListener('ar-hit-test-start', () => {
                     reticle = document.createElement('a-entity');
+                    // Reticle is a thin circle that sits on the detected surface
                     reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
-                    reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); // Green circle
+                    reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); 
                     reticle.setAttribute('rotation', '-90 0 0'); // Lay flat on the surface
                     sceneEl.appendChild(reticle);
                     
@@ -93,7 +95,11 @@
                 sceneEl.addEventListener('ar-hit-test-update', (event) => {
                     if (reticle && event.detail.intersection) {
                         reticle.setAttribute('position', event.detail.intersection.position);
+                        // The matrix is the crucial part that contains the rotation of the surface!
+                        reticle.object3D.matrix.fromArray(event.detail.intersection.matrix);
+                        reticle.object3D.matrix.decompose(reticle.object3D.position, reticle.object3D.rotation, reticle.object3D.scale);
                         reticle.object3D.visible = true;
+                        
                         updateInstructions("✅ **Tap the Green Circle** to place your graffiti here.");
                     } else if (reticle) {
                         reticle.object3D.visible = false;
@@ -102,35 +108,33 @@
                 });
                 
                 // 3. Placement Logic on Tap (Click)
-                sceneEl.addEventListener('click', (event) => {
+                sceneEl.addEventListener('click', () => {
                     if (reticle && reticle.object3D.visible) {
-                        const position = reticle.getAttribute('position');
                         
                         // Create the Graffiti Plane
                         const graffiti = document.createElement('a-plane');
                         graffiti.setAttribute('id', `graffiti-${Date.now()}`);
                         graffiti.setAttribute('height', data.imageSize);
                         graffiti.setAttribute('width', data.imageSize);
-                        graffiti.setAttribute('rotation', '0 0 0'); // Start flat
                         
                         // Use texture or fallback color
                         if (isImageLoaded) {
                             graffiti.setAttribute('src', '#graffitiTexture');
-                            // Orient the plane to stand vertically on the wall 
-                            graffiti.setAttribute('rotation', '-90 0 0'); 
-                            graffiti.object3D.lookAt(0, position.y, 0); // Aim towards the camera
+                            
+                            // Align the graffiti to the wall's orientation using the reticle's matrix
+                            graffiti.object3D.matrix.copy(reticle.object3D.matrix);
+                            graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
+                            
+                            // Adjust Y position to center the graffiti on the detected point
+                            graffiti.object3D.position.y += data.imageSize / 2;
+
                         } else {
-                            graffiti.setAttribute('color', 'red'); // Fallback color
+                            // Fallback logic for when the image fails to load
+                            graffiti.setAttribute('color', 'red'); 
+                            graffiti.setAttribute('rotation', reticle.getAttribute('rotation'));
+                            graffiti.setAttribute('position', reticle.getAttribute('position'));
+                            graffiti.object3D.position.y += data.imageSize / 2;
                         }
-                        
-                        // Set position on the detected surface (Y is up/down)
-                        // Adjust Y to lift it slightly off the floor if placed there, 
-                        // or center it on the wall hit point.
-                        graffiti.setAttribute('position', {
-                            x: position.x,
-                            y: position.y + (isImageLoaded ? data.imageSize / 2 : 0), // Lift plane up half its height
-                            z: position.z
-                        });
                         
                         sceneEl.appendChild(graffiti);
                         
@@ -155,7 +159,7 @@
         ar-modes="hit-test" 
         vr-mode-ui="enabled: false" 
         webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #instructions;"
-        graffiti-placement="imageSrc: my_graffiti.png; imageSize: 1.0"> 
+        graffiti-placement> 
 
         <!-- A-Assets is where the image is loaded once -->
         <a-assets></a-assets>
@@ -163,8 +167,6 @@
         <!-- The Camera is required for WebXR -->
         <a-entity camera position="0 0 0"></a-entity>
         
-        <!-- The Scene is where virtual objects will be placed -->
-        <!-- Objects will be dynamically added via the graffiti-placement component -->
     </a-scene>
 </body>
 </html>

@@ -27,27 +27,30 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             font-weight: 600;
         }
-        /* Style the required AR button for a better look */
-        .a-enter-vr-button {
-            background-color: #4CAF50 !important; /* Green */
-            color: white !important;
-            padding: 10px 20px !important;
-            border-radius: 12px !important;
-            border: 2px solid white !important;
-            font-size: 16px !important;
+        /* New custom button style */
+        #ar-button {
+            background-color: #4CAF50; 
+            color: white;
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-            transition: background-color 0.3s;
         }
-        .a-enter-vr-button:hover {
-            background-color: #45a049 !important;
+        #ar-button:hover {
+            background-color: #45a049;
         }
+        /* Hide the default A-Frame button since we are creating our own */
+        .a-enter-vr-button { display: none !important; } 
     </style>
     
     <script>
         // --- Component to Load Image and Place Graffiti on Tap ---
         AFRAME.registerComponent('graffiti-placement', {
             schema: {
-                // CHANGED: Using a reliable external placeholder URL to bypass GitHub path issues for now.
+                // Using a reliable external placeholder URL to bypass GitHub path issues for now.
                 imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
                 imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
             },
@@ -56,17 +59,31 @@
                 const sceneEl = this.el.sceneEl;
                 const data = this.data;
                 const instructionsEl = document.getElementById('instructions');
+                const arButton = document.getElementById('ar-button'); // Get the new button
                 let reticle = null;
                 let isImageLoaded = false;
                 
                 // Helper to update the top message
                 const updateInstructions = (message) => {
-                    instructionsEl.innerHTML = message;
+                    instructionsEl.innerHTML = message + (sceneEl.is('ar-mode') ? "" : "<button id='ar-button'>Enter AR (Start Camera)</button>");
+                    // Re-attach listener after updating innerHTML if button exists
+                    if (!sceneEl.is('ar-mode')) {
+                        setTimeout(() => {
+                             document.getElementById('ar-button').addEventListener('click', () => {
+                                sceneEl.enterAR();
+                            });
+                        }, 50);
+                    }
                 };
-                
-                // Ensure the camera is ready and tell the user to press the AR button
+
+                // MANUAL START BUTTON LOGIC
+                // We add the button and set up the click listener only when the scene is ready.
                 sceneEl.addEventListener('loaded', () => {
-                    updateInstructions("Waiting for AR button press... The camera will start after you tap **'Enter AR'**.");
+                    updateInstructions("Ready! Tap **'Enter AR (Start Camera)'** below.");
+                });
+                
+                sceneEl.addEventListener('enter-ar', () => {
+                    updateInstructions("Camera Active. Searching for surfaces...");
                 });
 
 
@@ -77,7 +94,8 @@
                 imageEl.src = data.imageSrc;
                 
                 imageEl.onerror = () => {
-                    updateInstructions(`⚠️ **ERROR:** Image file "${data.imageSrc}" FAILED to load. Using fallback RED color.`);
+                    console.error("Image load failed. Using fallback.");
+                    updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
                     isImageLoaded = false;
                 };
 
@@ -89,10 +107,9 @@
                 // 2. Setup Reticle for Surface Tracking (Hit-Testing)
                 sceneEl.addEventListener('ar-hit-test-start', () => {
                     reticle = document.createElement('a-entity');
-                    // Reticle is a thin circle that sits on the detected surface
                     reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
                     reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); 
-                    reticle.setAttribute('rotation', '-90 0 0'); // Lay flat on the surface
+                    reticle.setAttribute('rotation', '-90 0 0'); 
                     sceneEl.appendChild(reticle);
                     
                     updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
@@ -101,7 +118,6 @@
                 sceneEl.addEventListener('ar-hit-test-update', (event) => {
                     if (reticle && event.detail.intersection) {
                         reticle.setAttribute('position', event.detail.intersection.position);
-                        // The matrix is the crucial part that contains the rotation of the surface!
                         reticle.object3D.matrix.fromArray(event.detail.intersection.matrix);
                         reticle.object3D.matrix.decompose(reticle.object3D.position, reticle.object3D.rotation, reticle.object3D.scale);
                         reticle.object3D.visible = true;
@@ -137,8 +153,8 @@
                         } else {
                             // Fallback logic for when the image fails to load
                             graffiti.setAttribute('color', 'red'); 
-                            graffiti.setAttribute('rotation', reticle.getAttribute('rotation'));
-                            graffiti.setAttribute('position', reticle.getAttribute('position'));
+                            graffiti.object3D.matrix.copy(reticle.object3D.matrix);
+                            graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
                             graffiti.object3D.position.y += data.imageSize / 2;
                         }
                         
@@ -147,8 +163,6 @@
                         updateInstructions("🎨 **Graffiti Placed!** Move around it or tap again to place another.");
                     }
                 });
-                
-                updateInstructions("Tap the 'Enter AR' button below to start tracking.");
             }
         });
     </script>

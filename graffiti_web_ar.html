@@ -96,6 +96,8 @@
             sceneEl.addEventListener('enter-ar', () => {
                 // Hide the overlay once AR is active
                 overlay.style.display = 'none';
+                // Set the background color to transparent so we see the camera feed
+                sceneEl.setAttribute('background', 'color: transparent'); 
                 updateInstructions("Camera Active. Searching for surfaces...");
             });
 
@@ -108,10 +110,10 @@
                 
                 // Provide the specific iOS settings fix
                 overlay.innerHTML = `
-                    <h1 style="color: #FF6347;">AR Startup Failed!</h1>
+                    <h1 style="color: #FF6347;">AR Startup Blocked!</h1>
                     <p style="font-size: 1.1em;">The browser is blocking camera access.</p>
                     <p style="font-weight: bold; margin-top: 20px;">
-                        ***CRITICAL FIX REQUIRED:***
+                        ***CRITICAL FIX REQUIRED (iOS Settings)***
                     </p>
                     <p>
                         1. Go to **iPhone Settings**.
@@ -123,7 +125,7 @@
                         3. Tap **Camera**.
                     </p>
                     <p>
-                        4. Ensure **Safari Websites** is turned **ON** (Green switch).
+                        4. Look for and ensure **Safari Websites** is turned **ON** (Green switch).
                     </p>
                     <p style="margin-top: 25px;">
                         After fixing, tap the button below to retry.
@@ -247,7 +249,8 @@
         ar-modes="immersive-ar" 
         vr-mode-ui="enabled: false" 
         webxr="optionalFeatures: hit-test, dom-overlay"
-        graffiti-placement> 
+        graffiti-placement
+        background="color: #FFFFFF"> <!-- Setting a visible white background -->
 
         <!-- A-Assets is where the image is loaded once -->
         <a-assets></a-assets>

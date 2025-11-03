@@ -166,7 +166,7 @@
 
     <!-- The MindAR AR Scene -->
     <a-scene 
-        mindar-image="imageTargetSrc: none; autoStart: false" 
+        mindar-image-aframe="imageTargetSrc: none; autostart: true" 
         mindar-image="filterMinCF:0.0001; filterBeta: 0.001; shouldFaceUser: false;"
         embedded 
         color-space="sRGB" 
@@ -175,8 +175,8 @@
         device-orientation-permission-ui="enabled: false"
         graffiti-placer> 
         
-        <!-- CRITICAL FIX: Add camera component to render the camera feed as background -->
-        <a-entity mindar-camera></a-entity> 
+        <!-- CRITICAL FIX: Use mindar-image-aframe component for world tracking -->
+        <a-entity mindar-image-aframe="worldTracking: true" mindar-camera></a-entity> 
 
         <!-- Camera and Reticle (Targeting Indicator) -->
         <a-entity camera></a-entity>
@@ -199,11 +199,8 @@
     
     <!-- MindAR uses its own full-screen button which must be triggered -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const sceneEl = document.querySelector('a-scene');
-            // This is the MindAR entry point that starts the camera
-            sceneEl.start(); 
-        });
+        // REMOVED: document.addEventListener('DOMContentLoaded', () => { sceneEl.start(); });
+        // The mindar-image-aframe="autostart: true" attribute handles this now.
     </script>
 </body>
 </html>

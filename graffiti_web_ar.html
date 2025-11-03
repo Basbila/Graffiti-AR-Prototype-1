@@ -27,6 +27,7 @@
             color: white;
             padding: 20px;
             box-sizing: border-box;
+            text-align: center; /* Center text inside overlay */
         }
         #instructions {
             background-color: rgba(0, 0, 0, 0.7);
@@ -55,6 +56,7 @@
             cursor: pointer;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
             transition: background-color 0.3s;
+            margin-top: 20px;
         }
         #ar-button:hover {
             background-color: #45a049;
@@ -82,7 +84,6 @@
             updateInstructions("Tap **Enter AR** to begin."); 
             
             // Attach listener directly and once
-            // This is the most reliable way to handle the click event
             arButton.addEventListener('click', () => {
                 // Hide the overlay and button immediately
                 overlay.style.display = 'none';
@@ -96,6 +97,45 @@
                 // Hide the overlay once AR is active
                 overlay.style.display = 'none';
                 updateInstructions("Camera Active. Searching for surfaces...");
+            });
+
+            // Listen for AR failure
+            sceneEl.addEventListener('enter-ar-error', (event) => {
+                console.error("AR session failed to start:", event.detail.message);
+                
+                // Show the overlay again with critical instructions
+                overlay.style.display = 'flex';
+                
+                // Provide the specific iOS settings fix
+                overlay.innerHTML = `
+                    <h1 style="color: #FF6347;">AR Startup Failed!</h1>
+                    <p style="font-size: 1.1em;">The browser is blocking camera access.</p>
+                    <p style="font-weight: bold; margin-top: 20px;">
+                        ***CRITICAL FIX REQUIRED:***
+                    </p>
+                    <p>
+                        1. Go to **iPhone Settings**.
+                    </p>
+                    <p>
+                        2. Tap **Privacy & Security** (or just **Privacy**).
+                    </p>
+                    <p>
+                        3. Tap **Camera**.
+                    </p>
+                    <p>
+                        4. Ensure **Safari Websites** is turned **ON** (Green switch).
+                    </p>
+                    <p style="margin-top: 25px;">
+                        After fixing, tap the button below to retry.
+                    </p>
+                    <button id="ar-button" style="margin-top: 15px;">Retry AR</button>
+                `;
+                
+                // Re-attach the click listener to the new Retry button
+                document.getElementById('ar-button').addEventListener('click', () => {
+                    overlay.style.display = 'none';
+                    sceneEl.enterAR();
+                });
             });
         });
 
@@ -204,7 +244,7 @@
 
     <!-- The A-Frame AR Scene -->
     <a-scene 
-        ar-modes="hit-test" 
+        ar-modes="immersive-ar" 
         vr-mode-ui="enabled: false" 
         webxr="optionalFeatures: hit-test, dom-overlay"
         graffiti-placement> 

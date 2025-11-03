@@ -38,6 +38,10 @@
             cursor: pointer;
             margin-top: 10px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            /* Important: Ensure the button is block level for centering */
+            display: block; 
+            margin-left: auto;
+            margin-right: auto;
         }
         #ar-button:hover {
             background-color: #45a049;
@@ -59,20 +63,27 @@
                 const sceneEl = this.el.sceneEl;
                 const data = this.data;
                 const instructionsEl = document.getElementById('instructions');
-                const arButton = document.getElementById('ar-button'); // Get the new button
                 let reticle = null;
                 let isImageLoaded = false;
                 
-                // Helper to update the top message
+                // Helper to update the top message and handle the AR button display/click
                 const updateInstructions = (message) => {
-                    instructionsEl.innerHTML = message + (sceneEl.is('ar-mode') ? "" : "<button id='ar-button'>Enter AR (Start Camera)</button>");
-                    // Re-attach listener after updating innerHTML if button exists
-                    if (!sceneEl.is('ar-mode')) {
-                        setTimeout(() => {
-                             document.getElementById('ar-button').addEventListener('click', () => {
-                                sceneEl.enterAR();
-                            });
-                        }, 50);
+                    if (sceneEl.is('ar-mode')) {
+                        // AR is active, only show the message
+                        instructionsEl.innerHTML = message;
+                        return;
+                    }
+                    
+                    // AR is not active, show the message AND the button
+                    instructionsEl.innerHTML = message + "<button id='ar-button'>Enter AR (Start Camera)</button>";
+                    
+                    // CRITICAL FIX: Attach listener AFTER the innerHTML is set
+                    const arButton = document.getElementById('ar-button');
+                    if (arButton) {
+                        arButton.addEventListener('click', () => {
+                            // This function call triggers the camera and AR tracking
+                            sceneEl.enterAR();
+                        });
                     }
                 };
 
@@ -95,7 +106,10 @@
                 
                 imageEl.onerror = () => {
                     console.error("Image load failed. Using fallback.");
-                    updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
+                    // We only update instructions if AR mode is NOT active to avoid overwriting tracking messages
+                    if (!sceneEl.is('ar-mode')) {
+                       updateInstructions(`⚠️ **ERROR:** Image file FAILED to load. Using fallback RED color.`);
+                    }
                     isImageLoaded = false;
                 };
 

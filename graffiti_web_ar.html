@@ -48,6 +48,7 @@
         // --- Component to Place Graffiti on Tap ---
         AFRAME.registerComponent('graffiti-placer', {
             schema: {
+                // Using a reliable external placeholder URL
                 imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
                 imageSize: { type: 'number', default: 0.5 } // 0.5 meter by 0.5 meter
             },
@@ -93,7 +94,7 @@
                 // Place graffiti on tap
                 sceneEl.addEventListener('click', (event) => {
                     // Check if the reticle is visible and tracking a surface
-                    if (reticle.object3D.visible) {
+                    if (reticle.getAttribute('visible') === 'true') {
                         const position = reticle.getAttribute('position');
                         const rotation = reticle.getAttribute('rotation');
 
@@ -130,7 +131,7 @@
         });
         
         // --- Reticle Visibility Component ---
-        // MindAR makes the camera feed visible, but we need to check if the reticle is detecting a plane
+        // MindAR detects the plane and we set the reticle visibility
         AFRAME.registerComponent('reticle-visibility', {
             init: function() {
                 const reticle = document.getElementById('reticle');
@@ -141,9 +142,10 @@
                     }
                 };
                 
-                // Listen for the world-tracking anchor being found/lost
+                // Listen for the anchor being found/lost
                 this.el.addEventListener('anchorFound', () => {
-                    reticle.setAttribute('visible', true);
+                    // CRITICAL FIX: Ensure the reticle is visible
+                    reticle.setAttribute('visible', true); 
                     updateInstructions("✅ **Surface Found!** Tap the Green Circle to place graffiti.");
                 });
 
@@ -173,8 +175,11 @@
         device-orientation-permission-ui="enabled: false"
         graffiti-placer> 
         
+        <!-- CRITICAL FIX: Add camera component to render the camera feed as background -->
+        <a-entity mindar-camera></a-entity> 
+
         <!-- Camera and Reticle (Targeting Indicator) -->
-        <a-entity camera mindar-camera></a-entity>
+        <a-entity camera></a-entity>
 
         <!-- Reticle is an entity that will be tracked to the plane/wall/surface -->
         <a-entity 

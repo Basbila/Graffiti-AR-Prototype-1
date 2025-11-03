@@ -3,33 +3,22 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>Markerless Graffiti Projector (WebXR)</title>
+    <title>Markerless Graffiti Projector (MindAR)</title>
     
-    <!-- 1. Load A-Frame (the 3D scene handler) -->
+    <!-- 1. Load A-Frame (3D rendering) -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    
+    <!-- 2. Load MindAR World Tracking (handles camera and surface detection reliably) -->
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.3/dist/mindar-aframe.prod.js"></script>
 
     <style>
         /* Styles for full screen and instructions */
         body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            /* CRITICAL FIX: Make the overlay instantly visible on load */
-            display: flex; 
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 101; 
-            color: white;
-            padding: 20px;
-            box-sizing: border-box;
-            text-align: center; /* Center text inside overlay */
-        }
         #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             background-color: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 12px 20px;
@@ -40,29 +29,11 @@
             max-width: 90%;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             font-weight: 600;
-            position: absolute; 
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
         }
-        /* New custom button style */
-        #ar-button {
-            background-color: #4CAF50; 
-            color: white;
-            padding: 15px 30px;
-            border-radius: 12px;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-            transition: background-color 0.3s;
-            margin-top: 20px;
+        /* MindAR automatically creates a button, we will style the instructions around it */
+        .a-enter-ar-button {
+            display: none !important; /* Hide default A-Frame button */
         }
-        #ar-button:hover {
-            background-color: #45a049;
-        }
-        /* Hide the default A-Frame button since we are creating our own */
-        .a-enter-vr-button { display: none !important; } 
     </style>
     
     <script>
@@ -74,136 +45,59 @@
             }
         };
 
-        // --- Dedicated Script for AR Button Click ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const arButton = document.getElementById('ar-button');
-            const sceneEl = document.querySelector('a-scene');
-            const overlay = document.getElementById('overlay');
-            
-            // Set initial message (Will be hidden by overlay, but good practice)
-            updateInstructions("Tap **Enter AR** to begin."); 
-            
-            // Attach listener directly and once
-            arButton.addEventListener('click', () => {
-                // Hide the overlay and button immediately
-                overlay.style.display = 'none';
-                
-                // Trigger AR mode (This is the camera activation)
-                sceneEl.enterAR();
-            });
-            
-            // Listen for successful AR entry (The camera has started)
-            sceneEl.addEventListener('enter-ar', () => {
-                // Hide the overlay once AR is active
-                overlay.style.display = 'none';
-                // Set the background color to transparent so we see the camera feed
-                sceneEl.setAttribute('background', 'color: transparent'); 
-                updateInstructions("Camera Active. Searching for surfaces...");
-            });
-
-            // Listen for AR failure
-            sceneEl.addEventListener('enter-ar-error', (event) => {
-                console.error("AR session failed to start:", event.detail.message);
-                
-                // Show the overlay again with critical instructions
-                overlay.style.display = 'flex';
-                
-                // Provide the specific iOS settings fix
-                overlay.innerHTML = `
-                    <h1 style="color: #FF6347;">AR Startup Blocked!</h1>
-                    <p style="font-size: 1.1em;">The browser is blocking camera access.</p>
-                    <p style="font-weight: bold; margin-top: 20px;">
-                        ***CRITICAL FIX REQUIRED (iOS Settings)***
-                    </p>
-                    <p>
-                        1. Go to **iPhone Settings**.
-                    </p>
-                    <p>
-                        2. Tap **Privacy & Security** (or just **Privacy**).
-                    </p>
-                    <p>
-                        3. Tap **Camera**.
-                    </p>
-                    <p>
-                        4. Look for and ensure **Safari Websites** is turned **ON** (Green switch).
-                    </p>
-                    <p style="margin-top: 25px;">
-                        After fixing, tap the button below to retry.
-                    </p>
-                    <button id="ar-button" style="margin-top: 15px;">Retry AR</button>
-                `;
-                
-                // Re-attach the click listener to the new Retry button
-                document.getElementById('ar-button').addEventListener('click', () => {
-                    overlay.style.display = 'none';
-                    sceneEl.enterAR();
-                });
-            });
-        });
-
-        // --- Component to Load Image and Place Graffiti on Tap ---
-        AFRAME.registerComponent('graffiti-placement', {
+        // --- Component to Place Graffiti on Tap ---
+        AFRAME.registerComponent('graffiti-placer', {
             schema: {
-                // Using a reliable external placeholder URL
                 imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
-                imageSize: { type: 'number', default: 1.0 } // 1.0 meter by 1.0 meter
+                imageSize: { type: 'number', default: 0.5 } // 0.5 meter by 0.5 meter
             },
             
             init: function () {
-                const sceneEl = this.el.sceneEl;
+                const sceneEl = this.el;
                 const data = this.data;
-                let reticle = null;
-                let isImageLoaded = false;
+                const reticle = document.getElementById('reticle');
                 
-                // 1. Load Image and Setup Diagnostics
+                let isImageLoaded = false;
+
+                // Load image asset
                 const imageEl = document.createElement('img');
                 imageEl.setAttribute('id', 'graffitiTexture');
                 imageEl.setAttribute('crossorigin', 'anonymous');
                 imageEl.src = data.imageSrc;
                 
-                imageEl.onerror = () => {
-                    console.error("Image load failed. Using fallback.");
-                    isImageLoaded = false;
-                };
-
                 imageEl.onload = () => {
                     sceneEl.querySelector('a-assets').appendChild(imageEl);
                     isImageLoaded = true;
+                    updateInstructions("✅ Image loaded. Tap anywhere to place graffiti!");
                 };
                 
-                // 2. Setup Reticle for Surface Tracking (Hit-Testing)
-                sceneEl.addEventListener('ar-hit-test-start', () => {
-                    reticle = document.createElement('a-entity');
-                    reticle.setAttribute('geometry', 'primitive: circle; radius: 0.05');
-                    reticle.setAttribute('material', 'color: #00FF00; shader: flat; opacity: 0.5'); 
-                    reticle.setAttribute('rotation', '-90 0 0'); 
-                    reticle.object3D.visible = false; 
-                    sceneEl.appendChild(reticle);
-                    
-                    updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
+                imageEl.onerror = () => {
+                    updateInstructions("⚠️ Image not found. Placing fallback RED square.");
+                    isImageLoaded = false;
+                };
+
+
+                // --- Event Listeners ---
+
+                // MindAR starts camera and tracking
+                sceneEl.addEventListener('mindar-initialize', () => {
+                    updateInstructions("Camera Initialized. Searching for surfaces...");
                 });
-                
-                sceneEl.addEventListener('ar-hit-test-update', (event) => {
-                    if (reticle && sceneEl.is('ar-mode') && event.detail.intersection) {
-                        reticle.setAttribute('position', event.detail.intersection.position);
-                        reticle.object3D.matrix.fromArray(event.detail.intersection.matrix);
-                        reticle.object3D.matrix.decompose(reticle.object3D.position, reticle.object3D.rotation, reticle.object3D.scale);
-                        reticle.object3D.visible = true;
-                        
-                        updateInstructions("✅ **Tap the Green Circle** to place your graffiti here.");
-                    } else if (reticle && sceneEl.is('ar-mode')) {
-                        reticle.object3D.visible = false;
-                        updateInstructions("👀 **Scan the wall!** Move your phone slowly to find a flat surface.");
-                    }
+
+                // MindAR failed to start camera
+                sceneEl.addEventListener('mindar-error', (event) => {
+                    updateInstructions(`❌ ERROR: Failed to start AR. Check iOS Settings > Privacy > Camera. (${event.detail.error})`);
                 });
-                
-                // 3. Placement Logic on Tap (Click)
-                sceneEl.addEventListener('click', () => {
-                    if (reticle && reticle.object3D.visible && sceneEl.is('ar-mode')) {
-                        
+
+                // Place graffiti on tap
+                sceneEl.addEventListener('click', (event) => {
+                    // Check if the reticle is visible and tracking a surface
+                    if (reticle.object3D.visible) {
+                        const position = reticle.getAttribute('position');
+                        const rotation = reticle.getAttribute('rotation');
+
                         // Create the Graffiti Plane
                         const graffiti = document.createElement('a-plane');
-                        graffiti.setAttribute('id', `graffiti-${Date.now()}`);
                         graffiti.setAttribute('height', data.imageSize);
                         graffiti.setAttribute('width', data.imageSize);
                         
@@ -214,16 +108,21 @@
                             graffiti.setAttribute('color', 'red'); 
                         }
                         
-                        // Align the graffiti to the wall's orientation using the reticle's matrix
-                        graffiti.object3D.matrix.copy(reticle.object3D.matrix);
-                        graffiti.object3D.matrix.decompose(graffiti.object3D.position, graffiti.object3D.rotation, graffiti.object3D.scale);
+                        // Set position and rotation based on the reticle's tracked position
+                        graffiti.setAttribute('position', {
+                            x: position.x,
+                            y: position.y + (data.imageSize / 2), // Lift slightly off the ground/surface
+                            z: position.z
+                        });
                         
-                        // Adjust Y position to center the graffiti on the detected point
-                        graffiti.object3D.position.y += data.imageSize / 2;
+                        // MindAR returns orientation, so we apply it
+                        graffiti.setAttribute('rotation', rotation); 
 
                         sceneEl.appendChild(graffiti);
                         
-                        updateInstructions("🎨 **Graffiti Placed!** Move around it or tap again to place another.");
+                        updateInstructions("🎨 Graffiti Placed! Tap again to add more.");
+                    } else {
+                         updateInstructions("👀 Move your phone to find a surface (Reticle not visible).");
                     }
                 });
             }
@@ -232,32 +131,47 @@
 </head>
 
 <body>
-    <!-- Overlay for the Button (Ensures click works before AR starts) -->
-    <div id="overlay">
-        <h1>Graffiti AR Prototype</h1>
-        <p style="font-size: 1.1em; margin-bottom: 30px;">Tap below to activate your camera and start world tracking.</p>
-        <button id="ar-button">Enter AR (Start Camera)</button>
-    </div>
-
-    <!-- Instructions that overlay the camera feed once AR is active -->
+    <!-- Instructions that overlay the camera feed -->
     <div id="instructions">
-        Loading...
+        Loading MindAR...
     </div>
 
-    <!-- The A-Frame AR Scene -->
+    <!-- The MindAR AR Scene -->
     <a-scene 
-        ar-modes="immersive-ar" 
-        vr-mode-ui="enabled: false" 
-        webxr="optionalFeatures: hit-test, dom-overlay"
-        graffiti-placement
-        background="color: #FFFFFF"> <!-- Setting a visible white background -->
+        mindar-image="imageTargetSrc: none; autoStart: false" 
+        mindar-image="filterMinCF:0.0001; filterBeta: 0.001; shouldFaceUser: false;"
+        embedded 
+        color-space="sRGB" 
+        renderer="colorManagement: true, physicallyCorrectLights: true"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        graffiti-placer> 
+        
+        <!-- Camera and Reticle (Targeting Indicator) -->
+        <a-entity camera mindar-camera></a-entity>
 
-        <!-- A-Assets is where the image is loaded once -->
+        <!-- Reticle is an entity that will be tracked to the plane/wall/surface -->
+        <a-entity 
+            id="reticle"
+            mindar-world-tracking="anchorType: plane"
+            geometry="primitive: circle; radius: 0.05"
+            material="color: #00FF00; shader: flat; opacity: 0.5" 
+            rotation="-90 0 0" 
+            visible="false"
+            ></a-entity>
+
+        <!-- A-Assets is where the image will be loaded once -->
         <a-assets></a-assets>
 
-        <!-- The Camera is required for WebXR -->
-        <a-entity camera position="0 0 0"></a-entity>
-        
     </a-scene>
+    
+    <!-- MindAR uses its own full-screen button which must be triggered -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const sceneEl = document.querySelector('a-scene');
+            // This is the MindAR entry point that starts the camera
+            sceneEl.start(); 
+        });
+    </script>
 </body>
 </html>

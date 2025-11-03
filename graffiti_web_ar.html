@@ -3,12 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>Markerless Graffiti Projecter (MindAR)</title>
+    <title>Markerless Graffiti Projector (Stable Camera)</title>
     
     <!-- 1. Load A-Frame (3D rendering) -->
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     
-    <!-- 2. Load MindAR World Tracking (handles camera and surface detection reliably) -->
+    <!-- 2. Load MindAR (using the stable Image Tracking branch) -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.3/dist/mindar-aframe.prod.js"></script>
 
     <style>
@@ -19,7 +19,7 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.8); /* Darker background for visibility */
+            background-color: rgba(0, 0, 0, 0.7); 
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
@@ -27,64 +27,23 @@
             font-size: 18px;
             z-index: 100;
             max-width: 90%;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             font-weight: 600;
-        }
-        /* Style for the error state */
-        .error-message {
-            background-color: #A30000; /* Red for error */
         }
     </style>
     
     <script>
         // --- Helper Function for Instructions ---
-        const updateInstructions = (message, isError = false) => {
+        const updateInstructions = (message) => {
             const instructionsEl = document.getElementById('instructions');
             if (instructionsEl) {
                 instructionsEl.innerHTML = message;
-                instructionsEl.classList.toggle('error-message', isError);
             }
         };
 
-        // --- Camera Startup Logic (CRITICAL POLLING FIX) ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const sceneEl = document.querySelector('a-scene');
-
-            // Function to aggressively check for the MindAR component every 50ms
-            const startMindAR = () => {
-                const mindarComponent = sceneEl.components['mindar-image-aframe'];
-                
-                if (mindarComponent && mindarComponent.start) {
-                    // Success! Start the camera.
-                    updateInstructions("MindAR components ready. Starting camera...");
-                    mindarComponent.start();
-                    // After MindAR starts, the graffiti-placer component takes over the instructions
-                } else if (Date.now() - startTime < 5000) {
-                    // If it's not ready and less than 5 seconds have passed, check again soon
-                    setTimeout(startMindAR, 50);
-                } else {
-                    // Hard fail after 5 seconds
-                    updateInstructions(`❌ **FATAL ERROR:** AR component failed to initialize after 5s.`, true);
-                }
-            };
-
-            // Start the polling process
-            const startTime = Date.now();
-            updateInstructions("Initializing AR resources...");
-            startMindAR();
-
-            // Handle system errors when MindAR is running
-            sceneEl.addEventListener('mindar-error', (event) => {
-                console.error("MindAR runtime error:", event.detail.error);
-                updateInstructions(`❌ **CAMERA BLOCK:** The browser is restricting access. Check iOS Settings > Privacy > Camera.`, true);
-            });
-        });
-
-
-        // --- Component to Place Graffiti on Tap ---
+        // --- Placement Logic ---
         AFRAME.registerComponent('graffiti-placer', {
             schema: {
-                // Using a reliable external placeholder URL
                 imageSrc: { type: 'string', default: 'https://placehold.co/1000x1000/ff0000/ffffff?text=GRAFFITI+PLACEHOLDER' },
                 imageSize: { type: 'number', default: 0.5 } // 0.5 meter by 0.5 meter
             },
@@ -92,11 +51,10 @@
             init: function () {
                 const sceneEl = this.el;
                 const data = this.data;
-                const reticle = document.getElementById('reticle');
                 
                 let isImageLoaded = false;
-
-                // Load image asset (This loads independently)
+                
+                // 1. Load image asset
                 const imageEl = document.createElement('img');
                 imageEl.setAttribute('id', 'graffitiTexture');
                 imageEl.setAttribute('crossorigin', 'anonymous');
@@ -112,65 +70,50 @@
                     isImageLoaded = false;
                 };
 
-                // MindAR succeeded in starting the camera
-                sceneEl.addEventListener('mindar-started', () => {
-                    updateInstructions("✅ **Camera Active.** Move phone slowly to find a wall.");
+                // 2. Listen for MindAR to finish setup
+                sceneEl.addEventListener('mindar-image-aframe-loaded', () => {
+                    updateInstructions("✅ Camera Ready. Tap anywhere to place graffiti on the wall!");
                 });
-
-
-                // Place graffiti on tap
-                sceneEl.addEventListener('click', (event) => {
-                    // Check if the reticle is visible and tracking a surface
-                    if (reticle.getAttribute('visible') === 'true') {
-                        const position = reticle.getAttribute('position');
-                        const rotation = reticle.getAttribute('rotation');
-
-                        // Create the Graffiti Plane
-                        const graffiti = document.createElement('a-plane');
-                        graffiti.setAttribute('height', data.imageSize);
-                        graffiti.setAttribute('width', data.imageSize);
-                        
-                        // Use texture or fallback color
-                        if (isImageLoaded) {
-                            graffiti.setAttribute('src', '#graffitiTexture');
-                        } else {
-                            graffiti.setAttribute('color', 'red'); 
-                        }
-                        
-                        // Set position and rotation based on the reticle's tracked position
-                        graffiti.setAttribute('position', {
-                            x: position.x,
-                            y: position.y + (data.imageSize / 2), // Lift slightly off the ground/surface
-                            z: position.z
-                        });
-                        
-                        // MindAR returns orientation, so we apply it
-                        graffiti.setAttribute('rotation', rotation); 
-
-                        sceneEl.appendChild(graffiti);
-                        
-                        updateInstructions("🎨 Graffiti Placed! Tap again to add more.");
-                    } else {
-                         updateInstructions("👀 Move your phone to find a surface (Green Reticle not visible).");
-                    }
-                });
-            }
-        });
-        
-        // --- Reticle Visibility Component ---
-        AFRAME.registerComponent('reticle-visibility', {
-            init: function() {
-                const reticle = document.getElementById('reticle');
                 
-                // Listen for the anchor being found/lost
-                this.el.addEventListener('anchorFound', () => {
-                    reticle.setAttribute('visible', true); 
-                    updateInstructions("✅ **Surface Found!** Tap the Green Circle to place graffiti.");
-                });
+                // 3. Listen for Taps to place the object
+                sceneEl.addEventListener('click', (event) => {
+                    // Check if the scene is running in AR mode
+                    if (sceneEl.getAttribute('mindar-image-aframe').active) {
+                        
+                        // Use a basic raycaster (built into A-Frame) to determine where the user tapped in 3D space.
+                        // Since we are using an invisible marker (the entire camera view), 
+                        // this will project the graffiti based on the center of the screen's projection.
+                        const raycaster = sceneEl.components.raycaster;
+                        const intersections = raycaster.getIntersections();
 
-                this.el.addEventListener('anchorLost', () => {
-                    reticle.setAttribute('visible', false);
-                    updateInstructions("👀 Move your phone to find a wall.");
+                        if (intersections.length > 0) {
+                            const hit = intersections[0];
+                            const point = hit.point;
+                            
+                            // Create the Graffiti Plane
+                            const graffiti = document.createElement('a-plane');
+                            graffiti.setAttribute('height', data.imageSize);
+                            graffiti.setAttribute('width', data.imageSize);
+                            
+                            if (isImageLoaded) {
+                                graffiti.setAttribute('src', '#graffitiTexture');
+                            } else {
+                                graffiti.setAttribute('color', 'red'); 
+                            }
+                            
+                            // Orient the graffiti to face the camera and place it where the raycaster hit.
+                            graffiti.setAttribute('position', point);
+                            
+                            // Look at the camera so it is always visible (standard AR behavior for marker-based placement)
+                            graffiti.setAttribute('look-at', '[camera]'); 
+
+                            sceneEl.appendChild(graffiti);
+                            
+                            updateInstructions("🎨 Graffiti Placed! Move around or tap again to add more.");
+                        } else {
+                            updateInstructions("Move closer to the wall and tap again.");
+                        }
+                    }
                 });
             }
         });
@@ -180,34 +123,29 @@
 <body>
     <!-- Instructions that overlay the camera feed -->
     <div id="instructions">
-        Loading MindAR...
+        Initializing AR Camera...
     </div>
 
     <!-- The MindAR AR Scene -->
     <a-scene 
-        mindar-image-aframe="imageTargetSrc: none; renderTarget: mindar-camera" 
+        mindar-image-aframe="imageTargetSrc: none; autostart: true; filterMinCF: 0.001; filterBeta: 0.001;" 
         background="transparent" 
-        color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights: true"
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
+        raycaster="objects: a-plane"
+        cursor="rayOrigin: mouse"
         graffiti-placer> 
         
-        <!-- CRITICAL FIX: MindAR World Tracking and camera reference -->
-        <a-entity mindar-image-aframe="worldTracking: true" mindar-camera></a-entity> 
-
         <!-- Camera and Reticle (Targeting Indicator) -->
         <a-entity camera></a-entity>
-
-        <!-- Reticle is an entity that will be tracked to the plane/wall/surface -->
+        
+        <!-- The Invisible Marker Target: A full-screen invisible plane that is always "detected" -->
         <a-entity 
-            id="reticle"
-            mindar-world-tracking="anchorType: plane"
-            geometry="primitive: circle; radius: 0.05"
-            material="color: #00FF00; shader: flat; opacity: 0.5" 
-            rotation="-90 0 0" 
-            visible="false"
-            reticle-visibility>
+            mindar-image="imageTargetSrc: none" 
+            geometry="primitive: plane; height: 100; width: 100" 
+            material="transparent: true; opacity: 0.0; color: white"
+            position="0 0 -5"> <!-- Placed far away, but its presence is what allows tracking -->
         </a-entity>
 
         <!-- A-Assets is where the image will be loaded once -->
